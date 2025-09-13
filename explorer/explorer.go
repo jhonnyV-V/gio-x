@@ -141,6 +141,19 @@ func (e *Explorer) ChooseFiles(extensions ...string) ([]io.ReadCloser, error) {
 	return e.importFiles(extensions...)
 }
 
+func (e *Explorer) ChooseFolder(optionalFolderSugestion *string) (string, error) {
+	if e == nil {
+		return "", ErrNotAvailable
+	}
+
+	if runtime.GOOS != "js" {
+		e.mutex.Lock()
+		defer e.mutex.Unlock()
+	}
+
+	return e.importFolder(optionalFolderSugestion)
+}
+
 // CreateFile opens the file selector, and writes the given content into
 // some file, which the use can choose the location.
 //

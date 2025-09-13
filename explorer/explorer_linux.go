@@ -259,6 +259,61 @@ func (e *Explorer) importFiles(extensions ...string) ([]io.ReadCloser, error) {
 	return vs, nil
 }
 
+// importFolder opens a folder picker to choose a folder.
+func (e *Explorer) importFolder(folderSuggestion *string) (string, error) {
+	var folderPath string
+	err := e.withDesktopPortal(func(conn *dbus.Conn, desktopPortal dbus.BusObject, config config) error {
+		// Invoke the OpenFile method.
+		requestHandle := ""
+		options := map[string]dbus.Variant{
+			"directory":    dbus.MakeVariant(true),
+		}
+		if (folderSuggestion != nil) {
+			options["current_folder"] = dbus.MakeVariant(*folderSuggestion)
+		}
+
+		err := desktopPortal.Call("org.freedesktop.portal.FileChooser.OpenFile", 0, config.parentWindow, "Choose Folder", options).Store(&requestHandle)
+		if err != nil {
+			return fmt.Errorf("failed to call OpenFile: %w", err)
+		}
+
+		// Make sure we got the request object's path right. Update our subscription otherwise.
+		if requestHandle != config.expectedRequestHandle {
+			if err := conn.AddMatchSignal(dbus.WithMatchObjectPath(dbus.ObjectPath(requestHandle))); err != nil {
+				return fmt.Errorf("failed to subscribe to request: %w", err)
+			}
+			// Reset signal handling.
+			signals := make(chan *dbus.Signal, 1)
+			conn.Signal(signals)
+			config.signals = signals
+		}
+
+		// Wait for the response from the file dialog.
+		response := <-config.signals
+		uris := extractURIsFromSignal(response)
+
+		// Error if no files were selected.
+		if len(uris) < 1 {
+			return ErrUserDecline
+		}
+
+		// Remove the protocol from the URI.
+		parsedURL, err := url.Parse(uris[0])
+		if err != nil {
+			return fmt.Errorf("failed parsing file path %s: %w", uris[0], err)
+		}
+
+		folderPath = parsedURL.Path
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return folderPath, nil
+}
+
 func (e *Explorer) open(cfg configOpen) ([]io.ReadCloser, error) {
 	var filepaths []string
 	if err := e.withDesktopPortal(func(conn *dbus.Conn, desktopPortal dbus.BusObject, config config) error {

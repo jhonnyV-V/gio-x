@@ -1,6 +1,8 @@
-module gioui.org/x
+module github.com/jhonnyV-V/gio-x
 
-go 1.21
+go 1.24.0
+
+toolchain go1.24.1
 
 require (
 	gioui.org v0.8.0
